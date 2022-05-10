@@ -37,7 +37,12 @@ function! db_ui#dbout#update_param_table() abort
   endif
   " Leendo nuevo valor id
   let new_value = input('new value: ')
-  let primary_key = 'id'
+
+  " recuperando la table y esquema de la anterior consulta
+  let last_query = db_ui#get_last_query_info()
+  let table = trim(split(substitute(last_query, ';', '', 'g'), 'from')[1])
+
+  let primary_key = s:get_name_primary_key(table, scheme, db_url)
 
   let cell_line_number = s:get_cell_line_number(scheme)
   let cell_range = s:get_cell_range(cell_line_number, getcurpos(), scheme)
@@ -49,12 +54,9 @@ function! db_ui#dbout#update_param_table() abort
   let cell_range_primary_key = s:recovery_primary_key(primary_key)
   let field_value_primary_key = trim(getline('.')[cell_range_primary_key.from : cell_range_primary_key.to])
 
-  " recuperando la table y esquema de la anterior consulta
-  let query = db_ui#get_last_query_info() 
-  let table = trim(split(substitute(query, ';', '', 'g'), 'from')[1])
-
   let query = printf(scheme.update_row_id, table, field_name, new_value, primary_key, db_ui#utils#quote_query_value(field_value_primary_key))
 
+  " echo query
   echo ''
   exe 'DB '.query
 endfunction
@@ -401,4 +403,53 @@ function! s:recovery_primary_key(primary_key)
   endwhile
 
   return {'from': from_primary_key, 'to': to_primary_key}
+endfunction
+
+function! db_ui#dbout#delete_row_table() abort
+  let db_url = db#resolve(b:db)
+  let parsed = db#url#parse(db_url)
+  let scheme = db_ui#schemas#get(parsed.scheme)
+  if empty(scheme)
+    return db_ui#notifications#error(parsed.scheme.' scheme not supported for foreign key jump.')
+  endif
+  " Leendo nuevo valor id
+  let eliminar = input('Desea eliminar realmente (y/n): ')
+  if (eliminar == 'y')
+    let query = ''
+    try
+      " recuperando la table y esquema de la anterior consulta
+      let last_query = db_ui#get_last_query_info()
+      let table = trim(split(substitute(last_query, ';', '', 'g'), 'from')[1])
+
+      let primary_key = s:get_name_primary_key(table, scheme, db_url)
+
+      " recuperando id
+      let cell_range_primary_key = s:recovery_primary_key(primary_key)
+      let field_value_primary_key = trim(getline('.')[cell_range_primary_key.from : cell_range_primary_key.to])
+      let query = printf(scheme.delete_row_id, table, primary_key, db_ui#utils#quote_query_value(field_value_primary_key))
+
+      " echo query
+      exe 'DB '.query
+    catch
+      return db_ui#notifications#error(query.' deleted failed.')
+    endtry
+  else
+    echo '\n'
+    echo 'Cancelado!!!'
+  endif
+endfunction
+
+function! s:get_name_primary_key(table, scheme, db_url)
+  let arr = split(a:table, '\.')
+  let name_table = ''
+  if (len(arr) > 1)
+    let name_table = arr[1]
+  else
+    let name_table = arr[0]
+  endif
+  let primary_key_query = substitute(a:scheme.get_primary_key, '{table}', name_table, '')
+  let Parser = get(a:scheme, 'parse_virtual_results', a:scheme.parse_results)
+  let result = Parser(db_ui#schemas#query(a:db_url, a:scheme, primary_key_query), 2)
+  let [primary_key, tipo] = result[0]
+  return primary_key
 endfunction

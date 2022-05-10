@@ -33,13 +33,22 @@ let s:postgres_list_schema_query = "
 let s:postgres_tables_and_views = "
       \ SELECT table_schema, table_name FROM information_schema.tables UNION ALL
       \ select schemaname, matviewname from pg_matviews;"
+let s:postgres_get_primary_key = "
+    \ SELECT c.column_name, c.data_type
+    \ FROM information_schema.table_constraints tc
+    \ JOIN information_schema.constraint_column_usage AS ccu USING (constraint_schema, constraint_name)
+    \ JOIN information_schema.columns AS c ON c.table_schema = tc.constraint_schema
+    \   AND tc.table_name = c.table_name AND ccu.column_name = c.column_name
+    \ WHERE constraint_type = 'PRIMARY KEY' and tc.table_name = '{table}' LIMIT 1"
 let s:postgresql = {
       \ 'args': ['-A', '-c'],
       \ 'foreign_key_query': s:postgres_foreign_key_query,
+      \ 'get_primary_key': s:postgres_get_primary_key,
       \ 'schemes_query': s:postgres_list_schema_query,
       \ 'schemes_tables_query': s:postgres_tables_and_views,
       \ 'select_foreign_key_query': 'select * from "%s"."%s" where "%s" = %s',
       \ 'update_row_id': 'update %s set "%s"=%s where "%s" = %s',
+      \ 'delete_row_id': 'delete from %s where "%s" = %s',
       \ 'cell_line_number': 2,
       \ 'cell_line_pattern': '^-\++-\+',
       \ 'parse_results': {results,min_len -> s:results_parser(filter(results, '!empty(v:val)')[1:-2], '|', min_len)},
